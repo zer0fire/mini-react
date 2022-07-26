@@ -1,6 +1,17 @@
 import { createFiber } from "./ReactFiber";
 import { isArray, isStringOrNumber, Update } from "./utils";
 
+function placeChild(
+  newFiber, lastPlacedIndex, newIndex, shouldTrackSideEffects
+) {
+  newFiber.index = newIndex
+  // 是否初次渲染
+  if (!shouldTrackSideEffects) {
+    // 上一次插入节点时的位置（指上一次 returnFiber 对应的 DOM 的最远位置）
+    return lastPlacedIndex
+  }
+}
+
 // 处理子节点，协调 Diff
 export function reconcileChildren(returnFiber, children) {
   if (isStringOrNumber(children)) {
@@ -13,36 +24,36 @@ export function reconcileChildren(returnFiber, children) {
   let previousNewFiber = null; // 用来防止第一个节点是 null 当情况
 
   let newIndex = 0;
-  for (let newIndex = 0; newIndex < newChildren.length; newIndex++) {
-    const newChild = newChildren[newIndex];
-    const newFiber = createFiber(newChild, returnFiber);
-    const same = sameNode(newFiber, oldFiber);
-    // 复用属性
-    if (same) {
-      Object.assign(newFiber, {
-        stateNode: oldFiber.stateNode,
-        alternate: oldFiber,
-        flag: Update,
-      });
-    }
 
-    if (!same && oldFiber) {
-      deleteChild(returnFiber, oldFiber);
-    }
+  let lastPlacedIndex = 0;
 
-    // 移动到下一个
-    if (oldFiber) {
-      oldFiber = oldFiber.sibling;
+  let shouldTrackSideEffects = !!returnFiber.alternate// 用于判断是 returnFiber 初次渲染还是更新 🚕
+
+
+  // ? 初次渲染
+  // *1. 初次渲染
+  // *2. 老节点没了，只有新节点
+  if (!oldFiber) {
+    for (; newIndex < newChildren.length; newIndex++) {
+      const newChild = newChildren[newIndex];
+      if (newChild == null) { // 去掉 undefined 和 null
+        continue
+      }
+
+      const newFiber = createFiber(newChild, returnFiber);
+      // placeChild 是干什么的？
+      lastPlacedIndex = placeChild(newFiber, lastPlacedIndex, newIndex, shouldTrackSideEffects)
+
+      // 串起 sibling 节点
+      if (previousNewFiber === null) {
+        // 如何判断头结点
+        returnFiber.child = newFiber;
+      } else {
+        // console.log(previousNewFiber)
+        previousNewFiber.sibling = newFiber;
+      }
+      previousNewFiber = newFiber;
     }
-    // 串起 sibling 节点
-    if (previousNewFiber === null) {
-      // 如何判断头结点
-      returnFiber.child = newFiber;
-    } else {
-      // console.log(previousNewFiber)
-      previousNewFiber.sibling = newFiber;
-    }
-    previousNewFiber = newFiber;
   }
 
   // 如果新节点遍历完了
